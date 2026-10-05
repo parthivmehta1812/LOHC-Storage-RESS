@@ -1,6 +1,6 @@
 # LOHC-Storage-RESS
 
-[![CI](https://github.com/Parthiv18122000/LOHC-Storage-RESS/actions/workflows/ci.yml/badge.svg)](https://github.com/Parthiv18122000/LOHC-Storage-RESS/actions/workflows/ci.yml)
+[![CI](https://github.com/parthivmehta1812/LOHC-Storage-RESS/actions/workflows/ci.yml/badge.svg)](https://github.com/parthivmehta1812/LOHC-Storage-RESS/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -112,7 +112,7 @@ $$A_{PV,new} = A_{PV} - \frac{H_{ST}(24) - H_{ST}(0)}{\sum_t SR_t \cdot \eta_{PV
 ## Installation
 
 ```bash
-git clone https://github.com/Parthiv18122000/LOHC-Storage-RESS.git
+git clone https://github.com/parthivmehta1812/LOHC-Storage-RESS.git
 cd LOHC-Storage-RESS
 pip install -e ".[dev]"
 ```

@@ -42,8 +42,8 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/Parthiv18122000/LOHC-Storage-RESS"
-Issues     = "https://github.com/Parthiv18122000/LOHC-Storage-RESS/issues"
+Repository = "https://github.com/parthivmehta1812/LOHC-Storage-RESS"
+Issues     = "https://github.com/parthivmehta1812/LOHC-Storage-RESS/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
