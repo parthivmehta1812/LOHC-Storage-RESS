@@ -10,6 +10,9 @@ from lohc_cascade import (
     dehydrogenation_fractions,
     cascade,
     size_system,
+    make_annual_demand,
+    train_demand_forecaster,
+    forecast_demand,
 )
 
 
@@ -145,3 +148,41 @@ class TestSizeSystem:
         res_s, _, _ = size_system(p, f)
         res_n, _, _ = size_system(p, (0, 0, 0, 0))
         assert res_s["PV area (m2)"] > res_n["PV area (m2)"]
+
+
+class TestDemandForecaster:
+    def test_annual_demand_shape(self):
+        d = make_annual_demand(n_days=365)
+        assert d.shape == (8760,)
+
+    def test_annual_demand_positive(self):
+        d = make_annual_demand(n_days=365)
+        assert (d > 0).all()
+
+    def test_weekend_lower_than_weekday(self):
+        d = make_annual_demand(n_days=14, noise_std=0.0)
+        weekday_mean = np.mean([d[h] for h in range(7 * 24) if (h // 24) % 7 < 5])
+        weekend_mean = np.mean([d[h] for h in range(7 * 24) if (h // 24) % 7 >= 5])
+        assert weekday_mean > weekend_mean
+
+    def test_forecaster_returns_three_models(self):
+        d = make_annual_demand(n_days=60)
+        models = train_demand_forecaster(d, train_end_h=len(d) - 168)
+        assert len(models) == 3
+
+    def test_forecast_shape(self):
+        d = make_annual_demand(n_days=60)
+        train_end = len(d) - 168
+        models = train_demand_forecaster(d, train_end_h=train_end)
+        point, lower, upper = forecast_demand(models, d, train_end, len(d))
+        assert len(point) == len(d) - train_end
+        assert len(lower) == len(point)
+        assert len(upper) == len(point)
+
+    def test_intervals_ordered(self):
+        """Upper > lower on average — individual crossings can occur with small datasets."""
+        d = make_annual_demand(n_days=60)
+        train_end = len(d) - 168
+        models = train_demand_forecaster(d, train_end_h=train_end)
+        point, lower, upper = forecast_demand(models, d, train_end, len(d))
+        assert np.mean(upper > lower) > 0.90, "upper band should exceed lower band in >90% of hours"

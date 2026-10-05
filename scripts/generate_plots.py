@@ -25,7 +25,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from dataclasses import replace
 
-from lohc_cascade import Params, hydrogenation_fractions, dehydrogenation_fractions, size_system
+from lohc_cascade import (
+    Params, hydrogenation_fractions, dehydrogenation_fractions, size_system,
+    make_annual_demand, train_demand_forecaster, forecast_demand,
+)
 
 # ── Output directories ────────────────────────────────────────────────────────
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -256,6 +259,67 @@ def plot_heat_integration(sens_Q: list) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Figure 8 — 24h-ahead demand forecasting with uncertainty bands
+# ─────────────────────────────────────────────────────────────────────────────
+def plot_demand_forecast(
+    annual_demand: np.ndarray,
+    fc_point: np.ndarray,
+    fc_lower: np.ndarray,
+    fc_upper: np.ndarray,
+    test_start: int,
+    mae: float,
+    rmse: float,
+    cov90: float,
+) -> None:
+    actual_test = annual_demand[test_start:]
+    n_test      = len(actual_test)
+    hours_all   = np.arange(n_test)
+    WIN         = 14 * 24
+    hours_win   = np.arange(WIN)
+
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8))
+
+    # Top: 2-week detail window
+    ax = axes[0]
+    ax.fill_between(hours_win,
+                    fc_lower[:WIN] / 1000, fc_upper[:WIN] / 1000,
+                    color=TEAL, alpha=0.20, label="80% prediction interval")
+    ax.plot(hours_win, fc_point[:WIN] / 1000, color=TEAL, lw=2,
+            label="Forecast (p50)")
+    ax.plot(hours_win, actual_test[:WIN] / 1000, color=NAVY, lw=1.5,
+            ls="--", label="Actual demand")
+    ax.set_xlim(0, WIN)
+    ax.set_xlabel("Hour of forecast window")
+    ax.set_ylabel("Electricity demand (MWh/h)")
+    ax.set_title(
+        f"24h-ahead electricity demand forecast — 2-week window  "
+        f"(MAE = {mae/1000:.1f} MWh,  RMSE = {rmse/1000:.1f} MWh)"
+    )
+    ax.legend(loc="upper right")
+    ax.grid(alpha=0.3)
+
+    # Bottom: full test-period overview
+    ax2 = axes[1]
+    ax2.fill_between(hours_all,
+                     fc_lower / 1000, fc_upper / 1000,
+                     color=TEAL, alpha=0.15, label="80% prediction interval")
+    ax2.plot(hours_all, actual_test / 1000, color=NAVY, lw=0.8,
+             alpha=0.7, label="Actual demand")
+    ax2.plot(hours_all, fc_point / 1000, color=TEAL, lw=1.0,
+             label="Forecast (p50)")
+    ax2.set_xlim(0, n_test)
+    ax2.set_xlabel("Hour of test period (last 3 months)")
+    ax2.set_ylabel("Electricity demand (MWh/h)")
+    ax2.set_title(
+        f"Full test period — p90 empirical coverage {cov90*100:.1f}%  (target 90%)"
+    )
+    ax2.legend(loc="upper right")
+    ax2.grid(alpha=0.3)
+
+    _save(fig, "08_demand_forecast.png")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 def main() -> None:
@@ -331,7 +395,30 @@ def main() -> None:
     plot_reactor_load(df_s)
     plot_energy_waterfall(p, df_s)
     plot_heat_integration(sens_Q)
-    print(f"\nAll 7 figures saved to {IMG}/")
+
+    # ── Figure 8: demand forecasting ─────────────────────────────────────────
+    print("\nGenerating annual demand profile and training demand forecaster …")
+    annual_demand = make_annual_demand(n_days=365, seed=42)
+
+    TRAIN_END  = int(365 * 24 * 0.75)   # first 9 months (~6,570 h)
+    TEST_START = TRAIN_END
+    TEST_END   = len(annual_demand)
+
+    fc_models = train_demand_forecaster(annual_demand, train_end_h=TRAIN_END)
+    fc_point, fc_lower, fc_upper = forecast_demand(
+        fc_models, annual_demand, TEST_START, TEST_END
+    )
+
+    actual_test = annual_demand[TEST_START:TEST_END]
+    mae   = float(np.mean(np.abs(fc_point - actual_test)))
+    rmse  = float(np.sqrt(np.mean((fc_point - actual_test) ** 2)))
+    cov90 = float(np.mean(actual_test <= fc_upper))
+    print(f"[demand_forecaster] MAE={mae:.0f} kWh  RMSE={rmse:.0f} kWh  p90-coverage={cov90*100:.1f}%")
+
+    plot_demand_forecast(annual_demand, fc_point, fc_lower, fc_upper,
+                         TEST_START, mae, rmse, cov90)
+
+    print(f"\nAll 8 figures saved to {IMG}/")
 
 
 if __name__ == "__main__":

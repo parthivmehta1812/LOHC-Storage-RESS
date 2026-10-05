@@ -4,9 +4,9 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-A Python toolkit for **cascade (pinch) analysis** of self-sufficient PV–LOHC energy systems.
+A Python toolkit for **cascade (pinch) analysis** of self-sufficient PV–LOHC energy systems, extended with **24h-ahead electricity demand forecasting**.
 
-Given hourly PV irradiance and community electricity demand, the model iteratively sizes a complete hydrogen supply chain — electrolyzer, hydrogenation/dehydrogenation reactors, hydrogen storage, fuel cell, and DBT inventory — and quantifies how much each component is underestimated when internal process energy demand is neglected.
+Given hourly PV irradiance and community electricity demand, the model iteratively sizes a complete hydrogen supply chain and quantifies how much each component is underestimated when internal process energy demand is neglected. A GBM demand forecaster shows how uncertainty in the load profile propagates into the sizing workflow.
 
 **LOHC carrier:** dibenzyltoluene (H0-DBT / H18-DBT)  
 **Method:** Mah et al., *Energy* **218** (2021) 119475
@@ -25,54 +25,31 @@ Given hourly PV irradiance and community electricity demand, the model iterative
 | Dehydrogenation reactor | 814 kg H₂/h | 457 kg H₂/h | **+78 %** |
 | H₂ storage | 2,705 kg | 1,793 kg | **+51 %** |
 | DBT inventory | 45,466 kg | 30,129 kg | **+51 %** |
-| Fuel cell | 13,199 kW H₂ input | 13,239 kW H₂ input | ≈ 0 % |
-| Inverter | 6,665 kW | 6,665 kW | ≈ 0 % |
+| Fuel cell / Inverter | — | — | ≈ 0 % |
 
-> Neglecting internal heat and pump demand leads to 49–78 % undersizing across the key components.
+> Neglecting internal heat and pump demand leads to **49–78 % undersizing** across key components. The dominant cause: dehydrogenation burns **44 % of released H₂** for reactor heating.
 
-### Self-Consumption Fractions
+### Demand Forecasting — 24h-ahead, last 3 months hold-out
 
-| Process | H₂ burned for heat | Converges in |
-|---|---|---|
-| Hydrogenation | 3.6 % | 5 iterations |
-| Dehydrogenation | 44.1 % | direct (explicit) |
-
-The dehydrogenation step consumes **44 % of released H₂** for endothermic reactor heating and DBT preheating — the dominant internal energy demand.
-
-### System KPIs
-
-| KPI | Value |
+| Metric | Value |
 |---|---|
-| Round-trip efficiency (FC out / EL in) | 18.1 % |
-| Hydrogenation operating hours/day | 11 h |
-| HGN min load (% of design) | 23.3 % |
-| Dehydrogenation operating hours/day | 13 h |
-| DHGN min load (% of design) | 2.6 % |
+| MAE | 68 kWh/h |
+| RMSE | 87 kWh/h |
+| p90 empirical coverage | 86.8 % (target 90 %) |
+| Training data | 9 months (6,402 samples) |
 
 ---
 
 ## Plots
 
-### Daily Supply–Demand Mismatch
-![Supply vs Demand](docs/images/01_supply_vs_demand.png)
-
-### Internal Heat Demand: Self-Consumption Split
-![Self-Consumption](docs/images/02_self_consumption_split.png)
-
-### Hydrogen Storage Cascade
+### Hydrogen storage cascade — with vs. without internal demand
 ![Storage Cascade](docs/images/03_storage_cascade.png)
 
-### Undersizing If Internal Demand Neglected
+### Capacity underestimated if internal demand neglected
 ![Undersizing](docs/images/04_undersizing.png)
 
-### Required Reactor Load Profile
-![Reactor Load](docs/images/05_reactor_load_profile.png)
-
-### Power-to-LOHC-to-Power Energy Chain
-![Energy Waterfall](docs/images/06_energy_chain_waterfall.png)
-
-### Heat-Integration Sensitivity
-![Heat Integration](docs/images/07_heat_integration_lever.png)
+### 24h-ahead electricity demand forecast with 80% prediction intervals
+![Demand Forecast](docs/images/08_demand_forecast.png)
 
 ---
 
@@ -80,32 +57,20 @@ The dehydrogenation step consumes **44 % of released H₂** for endothermic reac
 
 ### Cascade Analysis Framework
 
-The model follows the cascade (pinch) analysis of Mah et al. (2021), extended with iterative self-consumption fractions:
+The model follows Mah et al. (2021), extended with iterative self-consumption fractions:
 
-**1. Self-consumption fractions (iterative)**
-
-Two fractions govern how much hydrogen and electricity are consumed internally rather than delivered to the community:
-
-- *Hydrogenation*: fraction of excess DC to the HGN pump (`f_pump`) and fraction of produced H₂ burned for DBT preheating (`f_fuel`) — solved iteratively until convergence.
-- *Dehydrogenation*: fraction of FC electricity to the DHGN pump and fraction of released H₂ burned for preheating + endothermic reaction heat — solved directly.
+**1. Self-consumption fractions**
+- *Hydrogenation*: fraction of excess DC to the HGN pump and fraction of H₂ burned for DBT preheating — solved iteratively (converges in 5 iterations).
+- *Dehydrogenation*: fraction of FC electricity to DHGN pump and fraction of H₂ burned for preheating + endothermic reaction heat — solved directly.
 
 **2. Hourly cascade**
-
-For each hour, PV surplus drives electrolysis → hydrogenation → H₂ storage charging; PV deficit drives H₂ storage withdrawal → dehydrogenation → fuel cell. The storage trajectory is pinch-shifted so that the minimum storage equals zero (physically closed).
+PV surplus → electrolysis → hydrogenation → H₂ storage charging; PV deficit → H₂ withdrawal → dehydrogenation → fuel cell. Storage trajectory is pinch-shifted so the minimum equals zero.
 
 **3. PV area iteration**
+Newton-style update until daily storage balance closes (H₂ at hour 0 = H₂ at hour 24, <0.05% tolerance).
 
-The PV area is updated by a Newton-style correction until the daily storage balance closes (H₂ stored at hour 0 = H₂ stored at hour 24) to within 0.05 %.
-
-### Key Equations
-
-$$\dot{H}_{CH}(t) = \dot{E}_{EL}(t) \cdot Y_{EL} \cdot (1 - f_{fuel,HGN}) \cdot \eta_{CH}$$
-
-$$\dot{H}_{DI}(t) = \frac{|\dot{E}_{FC}(t)|}{(1 - f_{pump,DHGN}) \cdot \eta_{FC} \cdot LHV} \cdot \frac{1}{(1 - f_{fuel,DHGN}) \cdot \eta_{DI}}$$
-
-$$H_{ST}(t) = H_{ST}(t-1) + \dot{H}_{CH}(t) + \dot{H}_{DI}(t)$$
-
-$$A_{PV,new} = A_{PV} - \frac{H_{ST}(24) - H_{ST}(0)}{\sum_t SR_t \cdot \eta_{PV} \cdot Y_{EL} \cdot (1 - f_{fuel,HGN}) \cdot (1 - f_{pump,HGN}) \cdot \eta_{CH}}$$
+**4. Demand forecasting**
+GBM trained on a synthetic annual demand dataset (base profile + weekday/weekend + seasonal variation + noise). Features: cyclic calendar encoding (sin/cos), lagged demand (t−24, t−48, t−168), rolling statistics. Three models: p10, p50, p90.
 
 ---
 
@@ -121,30 +86,39 @@ pip install -e ".[dev]"
 
 ## Quick Start
 
+### Cascade sizing
+
 ```python
 from lohc_cascade import (
-    Params,
-    hydrogenation_fractions,
-    dehydrogenation_fractions,
-    size_system,
+    Params, hydrogenation_fractions, dehydrogenation_fractions, size_system,
 )
 
 p = Params()
+fp_h, ff_h, _ = hydrogenation_fractions(p)
+fp_d, ff_d, _ = dehydrogenation_fractions(p)
 
-# Solve self-consumption fractions
-fp_h, ff_h, iters = hydrogenation_fractions(p)
-fp_d, ff_d, _     = dehydrogenation_fractions(p)
-f_self = (fp_h, ff_h, fp_d, ff_d)
-
-# Size the system
-results, df, storage = size_system(p, f_self)
-
-print(f"PV area        : {results['PV area (m2)']:,.0f} m²")
-print(f"H₂ storage     : {results['H2 storage (kg)']:,.0f} kg")
-print(f"Electrolyzer   : {results['Electrolyzer (kW)']:,.0f} kW")
+results, df, storage = size_system(p, (fp_h, ff_h, fp_d, ff_d))
+print(f"PV area    : {results['PV area (m2)']:,.0f} m²")
+print(f"H₂ storage : {results['H2 storage (kg)']:,.0f} kg")
 ```
 
-### Sensitivity: heat integration
+### Demand forecasting
+
+```python
+from lohc_cascade import make_annual_demand, train_demand_forecaster, forecast_demand
+import numpy as np
+
+demand = make_annual_demand(n_days=365)
+
+models = train_demand_forecaster(demand, train_end_h=6570)
+point, lower, upper = forecast_demand(models, demand, start_h=6570, end_h=8760)
+
+actuals = demand[6570:8760]
+print(f"MAE       : {np.mean(np.abs(point - actuals)) / 1000:.1f} MWh")
+print(f"p90 cover : {np.mean(actuals <= upper) * 100:.1f}%")
+```
+
+### Heat integration sensitivity
 
 ```python
 from dataclasses import replace
@@ -165,14 +139,10 @@ See [`examples/`](examples/) for complete scripts.
 
 ### `Params`
 
-Immutable dataclass with all system parameters. Key fields:
+Frozen dataclass with all system parameters. Key fields:
 
 | Field | Default | Description |
 |---|---|---|
-| `L_cap` | 0.062 | kg H₂ / kg loaded DBT |
-| `eta_HGN` | 0.90 | Degree of loading (hydrogenation) |
-| `eta_DHGN` | 0.88 | Degree of unloading (dehydrogenation) |
-| `T_HGN` | 150 °C | Hydrogenation temperature |
 | `T_DHGN` | 330 °C | Dehydrogenation temperature |
 | `dH_r` | 65.4 kJ/mol H₂ | Endothermic reaction enthalpy |
 | `PV_eff` | 0.15 | PV module efficiency |
@@ -180,21 +150,21 @@ Immutable dataclass with all system parameters. Key fields:
 | `FC_eff` | 0.50 | Fuel cell electrical efficiency |
 | `ext_heat_share` | 0.0 | Fraction of DHGN heat from external waste heat |
 
-### `hydrogenation_fractions(p, E_ex=100.0) → (f_pump, f_fuel, iterations)`
+### `size_system(p, f, A0, verbose) → (results, df, storage)`
 
-Iteratively solve for hydrogenation self-consumption fractions.
+Iterates PV area until daily storage balance closes. Returns equipment sizing dict, cascade DataFrame, and shifted storage profile.
 
-### `dehydrogenation_fractions(p, L_L=12.0) → (f_pump, f_fuel, heat_breakdown)`
+### `make_annual_demand(n_days, weekday_scale, weekend_scale, ...) → np.ndarray`
 
-Directly compute dehydrogenation self-consumption fractions.
+Generates a synthetic annual demand profile with weekday/weekend, seasonal variation, and Gaussian noise. Shape: `(n_days × 24,)`.
 
-### `cascade(A_pv, p, f) → (df, raw, shifted)`
+### `train_demand_forecaster(demand, train_end_h, n_estimators) → tuple`
 
-Compute hourly H₂ storage cascade for a given PV area and self-consumption fractions `f = (fp_h, ff_h, fp_d, ff_d)`.
+Returns `(model_p50, model_p10, model_p90)` — three fitted scikit-learn GBM estimators.
 
-### `size_system(p, f, A0=200_000.0, verbose=False) → (results, df, storage)`
+### `forecast_demand(models, demand, start_h, end_h) → tuple`
 
-Iterate PV area until daily storage balance closes. Returns equipment sizing dict, cascade DataFrame, and shifted storage profile.
+Returns `(point, lower, upper)` — p50, p10, p90 demand forecasts as `np.ndarray` [kWh/h].
 
 ---
 
@@ -208,10 +178,7 @@ pytest tests/ -v --cov=lohc_cascade
 
 ## Reference
 
-A.X.Y. Mah, W.P.Q. Ng, C.T. Lee, P.Y. Ong, Z.A. Zakaria, Z.Y. Ng,
-"Cascade analysis for self-sufficient solar-powered liquid organic hydrogen
-carrier (LOHC) system",
-*Energy* **218** (2021) 119475.
+A.X.Y. Mah et al., *Energy* **218** (2021) 119475.  
 [https://doi.org/10.1016/j.energy.2020.119475](https://doi.org/10.1016/j.energy.2020.119475)
 
 ---
