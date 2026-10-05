@@ -25,7 +25,7 @@ from __future__ import annotations
 import numpy as np
 from sklearn.ensemble import GradientBoostingRegressor
 
-from .params import DEMAND, TOL
+from .params import DEMAND
 
 
 def make_annual_demand(
@@ -91,7 +91,7 @@ def _make_features(demand: np.ndarray, t: int) -> list[float]:
     """Build feature vector for hour *t* using only past information."""
     hod = t % 24
     dow = (t // 24) % 7
-    mon = int((t / (365 * 24 / 12))) % 12      # approximate month index
+    mon = int(t / (365 * 24 / 12)) % 12        # approximate month index
 
     hod_sin = np.sin(2 * np.pi * hod / 24)
     hod_cos = np.cos(2 * np.pi * hod / 24)
