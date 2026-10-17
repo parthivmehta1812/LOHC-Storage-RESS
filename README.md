@@ -6,7 +6,7 @@
 
 A Python toolkit for **cascade (pinch) analysis** of self-sufficient PV–LOHC energy systems, extended with **24h-ahead electricity demand forecasting**.
 
-Given hourly PV irradiance and community electricity demand, the model iteratively sizes a complete hydrogen supply chain and quantifies how much each component is underestimated when internal process energy demand is neglected. A GBM demand forecaster shows how uncertainty in the load profile propagates into the sizing workflow.
+Given hourly PV irradiance and community electricity demand, the model iteratively sizes a complete hydrogen supply chain and quantifies how much each component is underestimated when internal process energy demand is neglected. A separate GBM demand forecaster produces 24h-ahead P10/P50/P90 load forecasts and evaluates their uncertainty (empirical P90 coverage on a hold-out period); it is not yet coupled to the sizing workflow.
 
 **LOHC carrier:** dibenzyltoluene (H0-DBT / H18-DBT)  
 **Method:** Mah et al., *Energy* **218** (2021) 119475
